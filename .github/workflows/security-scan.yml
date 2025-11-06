@@ -1,0 +1,142 @@
+name: Security - Secret Exposure Scan
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'pages/**'
+      - '**.py'
+      - '**.js'
+      - '**.ts'
+      - '**.jsx'
+      - '**.tsx'
+
+jobs:
+  secret-exposure-scan:
+    name: Detect Secret Exposure Patterns
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Scan for os.environ exposure (Python)
+        run: |
+          echo "🔍 Scanning Python files for os.environ exposure..."
+
+          VIOLATIONS=0
+
+          # Pattern 1: Direct os.environ access in responses
+          if grep -rn "os\.environ\[" backend/ --include="*.py" 2>/dev/null | grep -v "test_" | grep -v "__pycache__"; then
+            echo "❌ CRITICAL: Direct os.environ[] access detected"
+            VIOLATIONS=$((VIOLATIONS + 1))
+          fi
+
+          # Pattern 2: dict(os.environ) dumps
+          if grep -rn "dict(os\.environ)" backend/ --include="*.py" 2>/dev/null | grep -v "test_" | grep -v "__pycache__"; then
+            echo "❌ CRITICAL: os.environ dictionary dump detected"
+            VIOLATIONS=$((VIOLATIONS + 1))
+          fi
+
+          # Pattern 3: os.environ in JSON responses
+          if grep -rn "JsonResponse.*os\.environ" backend/ --include="*.py" 2>/dev/null | grep -v "test_" | grep -v "__pycache__"; then
+            echo "❌ CRITICAL: os.environ in JsonResponse detected"
+            VIOLATIONS=$((VIOLATIONS + 1))
+          fi
+
+          # Pattern 4: Print environment for debugging
+          if grep -rn "print(os\.environ)" backend/ --include="*.py" 2>/dev/null | grep -v "test_" | grep -v "__pycache__"; then
+            echo "⚠️  WARNING: print(os.environ) debugging code detected"
+          fi
+
+          if [ $VIOLATIONS -gt 0 ]; then
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "🚨 SECURITY VIOLATION: Secret exposure patterns detected"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+            echo "Review the files above and remove any code that exposes"
+            echo "environment variables or secrets in HTTP responses."
+            echo ""
+            exit 1
+          fi
+
+          echo "✅ No Python os.environ exposure detected"
+
+      - name: Scan for process.env exposure (JavaScript/TypeScript)
+        run: |
+          echo "🔍 Scanning JavaScript/TypeScript files for process.env exposure..."
+
+          VIOLATIONS=0
+
+          # Pattern 1: process.env in responses
+          if grep -rn "res\..*\.json.*process\.env" frontend/ pages/ --include="*.js" --include="*.ts" --include="*.jsx" --include="*.tsx" 2>/dev/null | grep -v "node_modules"; then
+            echo "❌ CRITICAL: process.env in JSON response detected"
+            VIOLATIONS=$((VIOLATIONS + 1))
+          fi
+
+          # Pattern 2: JSON.stringify(process.env)
+          if grep -rn "JSON\.stringify(process\.env)" frontend/ pages/ --include="*.js" --include="*.ts" --include="*.jsx" --include="*.tsx" 2>/dev/null | grep -v "node_modules"; then
+            echo "❌ CRITICAL: JSON.stringify(process.env) detected"
+            VIOLATIONS=$((VIOLATIONS + 1))
+          fi
+
+          # Pattern 3: Spread process.env into objects
+          if grep -rn "\.\.\.(process\.env)" frontend/ pages/ --include="*.js" --include="*.ts" --include="*.jsx" --include="*.tsx" 2>/dev/null | grep -v "node_modules"; then
+            echo "❌ CRITICAL: Spreading process.env into object detected"
+            VIOLATIONS=$((VIOLATIONS + 1))
+          fi
+
+          if [ $VIOLATIONS -gt 0 ]; then
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "🚨 SECURITY VIOLATION: Secret exposure patterns detected"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+            echo "Review the files above and remove any code that exposes"
+            echo "environment variables or secrets in HTTP responses."
+            echo ""
+            exit 1
+          fi
+
+          echo "✅ No JavaScript process.env exposure detected"
+
+      - name: Scan for suspicious endpoint names
+        run: |
+          echo "🔍 Scanning for suspicious endpoint names..."
+
+          SUSPICIOUS_NAMES="debug|dump|env|secret|leak|expose|test-secrets|show-config"
+
+          # Python views
+          if grep -rEn "(def|class).*($SUSPICIOUS_NAMES)" backend/ --include="*.py" 2>/dev/null | grep -v "test_" | grep -v "__pycache__"; then
+            echo "⚠️  WARNING: Suspicious endpoint names detected in Python"
+            echo "Manual review required before merge"
+          fi
+
+          # JavaScript routes
+          if grep -rEn "(function|export|const).*($SUSPICIOUS_NAMES)" frontend/ pages/ --include="*.js" --include="*.ts" --include="*.jsx" --include="*.tsx" 2>/dev/null | grep -v "node_modules"; then
+            echo "⚠️  WARNING: Suspicious endpoint names detected in JavaScript"
+            echo "Manual review required before merge"
+          fi
+
+          echo "ℹ️  Suspicious name scan complete"
+
+      - name: Summary
+        if: success()
+        run: |
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✅ SECRET EXPOSURE SCAN PASSED"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "No obvious secret exposure patterns detected."
+          echo ""
+          echo "Remember:"
+          echo "  • Never return os.environ or process.env in responses"
+          echo "  • Use middleware secret filtering as defense-in-depth"
+          echo "  • Use limited secrets in preview environments"
+          echo "  • Monitor logs for exposure attempts"
+          echo ""

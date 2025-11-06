@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# File: .githooks/post-commit
+
+# Update session report
+python scripts/session_report.py --reason post-commit --finalize || true
+
+# Refresh .title file (in case PR state changed)
+python scripts/update_title.py || true

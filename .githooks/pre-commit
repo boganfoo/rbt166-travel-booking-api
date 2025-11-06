@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# File: .githooks/pre-commit
+
+# Run gitignore review check for sensitive content
+bash .githooks/check-gitignore.sh || true
+
+# Run session report
+python scripts/session_report.py --reason pre-commit || true
