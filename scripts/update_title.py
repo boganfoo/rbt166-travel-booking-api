@@ -49,7 +49,7 @@ def get_repo_name_from_slug(slug: str) -> str:
 
 def extract_project_number(repo_name: str) -> str:
     """Extract project number from repo name (e.g., '131-RBT-...' -> '131')."""
-    match = re.search(r'(\d+)[-_]', repo_name)
+    match = re.match(r'^(\d+)', repo_name)
     if not match:
         raise RuntimeError(f"Could not extract project number from repo: {repo_name}")
     return match.group(1)
